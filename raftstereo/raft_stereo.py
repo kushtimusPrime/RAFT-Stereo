@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from core.update import BasicMultiUpdateBlock
-from core.extractor import BasicEncoder, MultiBasicEncoder, ResidualBlock
-from core.corr import CorrBlock1D, PytorchAlternateCorrBlock1D, CorrBlockFast1D, AlternateCorrBlock
-from core.utils.utils import coords_grid, upflow8
-
+from raftstereo.update import BasicMultiUpdateBlock
+from raftstereo.extractor import BasicEncoder, MultiBasicEncoder, ResidualBlock
+from raftstereo.corr import CorrBlock1D, PytorchAlternateCorrBlock1D, CorrBlockFast1D, AlternateCorrBlock
+from raftstereo.utils.utils import coords_grid, upflow8
+from dataclasses import dataclass
 
 try:
     autocast = torch.cuda.amp.autocast
@@ -18,6 +18,8 @@ except:
             pass
         def __exit__(self, *args):
             pass
+
+
 
 class RAFTStereo(nn.Module):
     def __init__(self, args):
@@ -139,3 +141,41 @@ class RAFTStereo(nn.Module):
             return coords1 - coords0, flow_up
 
         return flow_predictions
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class RAFTConfig:
+    restore_ckpt: str = "/home/justin/RAFT-Stereo/models/raftstereo-middlebury.pth"
+    hidden_dims: List[int] = field(default_factory=lambda: [128]*3)
+    corr_implementation: str = "reg"
+    shared_backbone: bool = False
+    corr_levels: int = 4
+    corr_radius: int = 4
+    n_downsample: int = 2
+    context_norm: str = "batch"
+    slow_fast_gru: bool = False
+    mixed_precision: bool = False
+    n_gru_layers: int = 3
+
+def create_raft():
+        args = RAFTConfig()
+        model = torch.nn.DataParallel(RAFTStereo(args), device_ids=[0])
+        model.load_state_dict(torch.load(args.restore_ckpt))
+
+        model = model.module
+        model = model.to('cuda')
+        model = model.eval()
+        return model
+
+@torch.no_grad
+def raft_inference(left: torch.Tensor, right:torch.Tensor, model, iters = 32):
+    assert left.shape == right.shape
+    assert left.shape[0] == 3
+    from raftstereo.utils.utils import InputPadder
+    padder = InputPadder(left.shape, divis_by=32)
+    left, right = padder.pad(left[None,...], right[None,...])
+
+    _, flow_up = model(left, right, iters=iters, test_mode=True)
+    flow_up = padder.unpad(flow_up).squeeze()
+    return flow_up
