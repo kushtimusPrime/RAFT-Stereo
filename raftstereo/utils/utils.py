@@ -17,7 +17,7 @@ class InputPadder:
 
     def pad(self, *inputs):
         assert all((x.ndim == 4) for x in inputs)
-        return [F.pad(x, self._pad, mode='replicate') for x in inputs]
+        return [F.pad(x.float(), self._pad, mode='replicate') for x in inputs]
 
     def unpad(self, x):
         assert x.ndim == 4

@@ -168,7 +168,7 @@ def create_raft():
         model = model.eval()
         return model
 
-@torch.no_grad
+@torch.no_grad()
 def raft_inference(left: torch.Tensor, right:torch.Tensor, model, iters = 32):
     assert left.shape == right.shape
     assert left.shape[0] == 3
